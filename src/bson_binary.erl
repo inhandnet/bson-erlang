@@ -220,9 +220,10 @@ get_unixtime(<<?get_int64(MilliSecs), Bin/binary>>) ->
   {{MilliSecs div 1000000000, (MilliSecs div 1000) rem 1000000, (MilliSecs * 1000) rem 1000000}, Bin}.
 
 %% @private
--spec put_oid(<<_:96>>) -> <<_:96>>.
+-spec put_oid(<<_:96>> | integer()) -> <<_:96>>.
+put_oid(I) when is_integer(I) -> put_oid(<<I:96>>);
 put_oid(<<Oid:12/binary>>) -> Oid.
 
 %% @private
--spec get_oid(binary()) -> {<<_:96>>, binary()}.
-get_oid(<<Oid:12/binary, Bin/binary>>) -> {Oid, Bin}.
+-spec get_oid(binary()) -> {integer(), binary()}.
+get_oid(<<Oid:96, Bin/binary>>) -> {Oid, Bin}.

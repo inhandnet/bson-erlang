@@ -22,7 +22,7 @@ validate(Document, Spec) ->
 validate_value(Value, []) -> Value;
 validate_value(Value, [required | Rest]) ->
   validate_value(Value, Rest);
-validate_value({<<_:96>>} = Value, [object_id | Rest]) ->
+validate_value({Int} = Value, [object_id | Rest]) when is_integer(Int) ->
   validate_value(Value, Rest);
 validate_value(Value, Spec = [object_id | _]) ->
   error(badarg, [Value, Spec]);

@@ -58,7 +58,41 @@ doc_foldrN(Fun, Acc, Doc, Low, High) ->
 
 %% @doc Convert document to a list of all its fields
 -spec fields(document()) -> [{label(), value()}].
-fields(Doc) -> doc_foldr(fun(Label, Value, List) -> [{Label, Value} | List] end, [], Doc).
+fields(Doc) -> doc_foldr(
+  fun(Label, Value, List) ->
+    if is_tuple(Value) ->
+      case Value of
+        {_Id} ->
+          [{Label, Value} | List];
+        _ ->
+          [{Label, fields(Value)} | List]
+      end;
+      is_list(Value) ->
+        [{Label, scan_tuple(Value)} | List];
+      true ->
+        [{Label, Value} | List]
+    end
+  end, [], Doc).
+
+scan_tuple(List) ->
+  scan_tuple(List, []).
+
+scan_tuple([], ResultList) ->
+  lists:reverse(ResultList);
+scan_tuple([Element | List], ResultList) ->
+  if is_tuple(Element) ->
+    case Element of
+      {_Id} ->
+        scan_tuple(List, [Element | ResultList]);
+      _ ->
+        scan_tuple(List, [fields(Element) | ResultList])
+    end;
+    is_list(Element) ->
+      scan_tuple(List, [scan_tuple(Element) | ResultList]);
+    true ->
+      scan_tuple(List, [Element | ResultList])
+  end.
+
 
 %% @doc Convert list of fields to a document
 -spec document([{label(), value()}]) -> document().
@@ -67,7 +101,31 @@ document(Fields) -> list_to_tuple(flatten(Fields)).
 %% @doc Flatten list by removing tuple constructors
 -spec flatten([{label(), value()}]) -> [label() | value()].
 flatten([]) -> [];
-flatten([{Label, Value} | Fields]) -> [Label, Value | flatten(Fields)].
+flatten([{Label, Value} | Fields]) ->
+  case Value of
+    [{_SubLabel, _SubValue} | _Rest] ->
+      [Label, list_to_tuple(flatten(Value)) | flatten(Fields)];
+    [_NewValue | _Rest] ->
+      [Label, scan_proplist(Value) | flatten(Fields)];
+    _ ->
+      [Label, Value | flatten(Fields)]
+  end.
+
+scan_proplist(List) ->
+  scan_proplist(List, []).
+
+scan_proplist([], ResultList) ->
+  lists:reverse(ResultList);
+scan_proplist([Element | List], ResultList) ->
+  case Element of
+    [{_Label, _Value} | _Rest] ->
+      scan_proplist(List, [list_to_tuple(flatten(Element)) | ResultList]);
+    [_Value | _Rest] ->
+      scan_proplist(List, [scan_proplist(Element) | ResultList]);
+    _ ->
+      scan_proplist(List, [Element | ResultList])
+  end.
+
 
 %% @doc Value of field in document if there
 -spec lookup(label(), document()) -> value() | {}.
@@ -131,8 +189,8 @@ include(Labels, Document) ->
 -spec exclude([label()], document()) -> document().
 exclude(Labels, Document) ->
   Fun = fun(Label, Value, Doc) -> case lists:member(Label, Labels) of
-                                    false -> [Label, Value | Doc];
-                                    true -> Doc end end,
+    false -> [Label, Value | Doc];
+    true -> Doc end end,
   list_to_tuple(doc_foldr(Fun, [], Document)).
 
 %% @doc Replace field with new value, adding to end if new
@@ -278,15 +336,17 @@ unixtime_to_secs({MegaSecs, Secs, _}) -> MegaSecs * 1000000 + Secs.
 
 % ObjectId %
 
--type objectid() :: {<<_:96>>}.
+-type objectid() :: {integer()}.
 % `<<UnixTimeSecs:32/big, MachineId:24/big, ProcessId:16/big, Count:24/big>>'
 
 -spec objectid(unixsecs(), <<_:40>>, integer()) -> objectid().
 objectid(UnixSecs, MachineAndProcId, Count) ->
-  {<<UnixSecs:32/big, MachineAndProcId:5/binary, Count:24/big>>}.
+  {<<I:96>>} = {<<UnixSecs:32/big, MachineAndProcId:5/binary, Count:24/big>>},
+  {I}.
 
 %% @doc Time when object id was generated
 -spec objectid_time(objectid()) -> unixtime().
+objectid_time({I}) when is_integer(I) -> objectid_time({<<I:96>>});
 objectid_time({<<UnixSecs:32/big, _:64>>}) -> secs_to_unixtime(UnixSecs).
 
 %% Flattens map, add dot notation to all nested objects
